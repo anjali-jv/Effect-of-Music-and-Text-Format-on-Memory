@@ -1,0 +1,85 @@
+library(readxl)
+library(dplyr)
+library(car)
+library(effectsize)
+library(ggplot2)
+library(gridExtra)
+
+file_path <- "C:/Users/anjal/Documents/Statistics/MIE237 Project/Stats Project Results.xlsx"
+sheets <- excel_sheets(file_path)
+combined_data <- data.frame()
+for (sheet in sheets) {
+  df <- read_excel(file_path, sheet = sheet)
+  df$Music <- strsplit(sheet, "-")[[1]][1]
+  df$Format <- strsplit(sheet, "-")[[1]][2]
+  combined_data <- bind_rows(combined_data, df)
+}
+
+colnames(combined_data)[2] <- "Score"
+combined_data <- combined_data %>% filter(!is.na(Score))
+#Shapiro-Wilks Test for Normality
+shapiro_results <- combined_data %>%
+  group_by(Music, Format) %>%
+  summarise(
+    W = shapiro.test(Score)$statistic,
+    p_value = shapiro.test(Score)$p.value
+    )
+print(shapiro_results)
+
+#Levenes Test
+leveneTest(Score ~ Music * Format, data = combined_data)
+
+#ANOVA Test
+anova_model <- aov(Score ~ Music * Format, data = combined_data)
+summary(anova_model)
+
+#ETA_Squared
+eta_squared(anova_model, partial = TRUE)
+
+#ggplot2 graph of interactions:
+summary_data <- combined_data %>%
+  group_by(Music, Format) %>%
+  summarise(Mean = mean(Score),
+            SE = sd(Score) / sqrt(n()),
+            .groups = "drop")
+ggplot(summary_data, aes(x = Music, y = Mean, color = Format, group = Format)) +
+  geom_line(size = 1) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = Mean - SE, ymax = Mean + SE), width = 0.2) +
+  labs(title = "Interaction Plot: Music Type × Format",
+       x = "Music Type",
+       y = "Mean Score") +
+  theme_minimal() +
+  theme(legend.title = element_blank())
+
+#Separated by Independent Variable
+music_summary <- combined_data %>%
+  group_by(Music) %>%
+  summarise(Mean_Score = mean(Score),
+            SE = sd(Score)/sqrt(n()),
+            .groups = "drop")
+
+format_summary <- combined_data %>%
+  group_by(Format) %>%
+  summarise(Mean_Score = mean(Score),
+            SE = sd(Score)/sqrt(n()),
+            .groups = "drop")
+# Plot: Music Type alone
+p1 <- ggplot(music_summary, aes(x = Music, y = Mean_Score)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  geom_errorbar(aes(ymin = Mean_Score - SE, ymax = Mean_Score + SE), width = 0.2) +
+  labs(title = "Effect of Music Type Alone",
+       y = "Mean Score") +
+  theme_minimal()
+
+# Plot: Format alone
+p2 <- ggplot(format_summary, aes(x = Format, y = Mean_Score)) +
+  geom_bar(stat = "identity", fill = "salmon") +
+  geom_errorbar(aes(ymin = Mean_Score - SE, ymax = Mean_Score + SE), width = 0.2) +
+  labs(title = "Effect of Format Alone",
+       y = "Mean Score") +
+  theme_minimal()
+
+# View both plots side-by-side
+grid.arrange(p1, p2, ncol = 2)
+
